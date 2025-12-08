@@ -86,6 +86,29 @@ func TestResolveTextFromStdin(t *testing.T) {
 	}
 }
 
+func TestResolveTextEmptySources(t *testing.T) {
+	// With no args, no file, and stdin still a TTY, expect an error.
+	if _, err := resolveText(nil, ""); err == nil {
+		t.Fatalf("expected error when no text is provided")
+	}
+}
+
+func TestResolveTextEmptyFile(t *testing.T) {
+	tmp, err := os.CreateTemp("", "sag_empty")
+	if err != nil {
+		t.Fatalf("temp file: %v", err)
+	}
+	defer func() { _ = os.Remove(tmp.Name()) }()
+
+	if err := tmp.Close(); err != nil {
+		t.Fatalf("close temp: %v", err)
+	}
+
+	if _, err := resolveText(nil, tmp.Name()); err == nil {
+		t.Fatalf("expected error on empty input file")
+	}
+}
+
 func TestResolveVoiceDefaultsToFirst(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, err := w.Write([]byte(`{"voices":[{"voice_id":"id1","name":"Alpha","category":"premade"},{"voice_id":"id2","name":"Beta","category":"premade"}]}`)); err != nil {
