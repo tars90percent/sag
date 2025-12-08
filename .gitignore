@@ -1,0 +1,24 @@
+# Binaries
+sag
+say11
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+
+# Build and module caches
+bin/
+build/
+dist/
+*.out
+*.log
+
+# Go vendor
+vendor/
+
+# Editor/OS cruft
+.DS_Store
+.idea/
+.vscode/
