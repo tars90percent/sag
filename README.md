@@ -1,6 +1,6 @@
 # sag
 
-Command-line ElevenLabs text-to-speech with macOS `say`-style flags. Streams to your speakers by default, can list voices, and saves audio files when requested.
+🗣️ ElevenLabs speech, mac-style ease. Streams to your speakers by default, can list voices, and saves audio files when requested.
 
 ## Install
 ```bash

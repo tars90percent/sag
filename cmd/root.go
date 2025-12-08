@@ -18,7 +18,7 @@ var (
 	versionFlag bool
 	rootCmd     = &cobra.Command{
 		Use:     "sag",
-		Short:   "Command-line ElevenLabs TTS with macOS playback",
+		Short:   "🗣️ ElevenLabs speech, mac-style ease",
 		Long:    "Command-line ElevenLabs TTS with macOS playback. Call it like macOS 'say': if you skip the subcommand, text args are passed to 'speak' (e.g. `sag \"Hello\"`).",
 		Example: "  sag \"Hi Peter\"\n  echo 'piped input' | sag\n  sag speak -v Roger --rate 200 \"Faster speech\"",
 		Version: "0.1.0",
