@@ -52,7 +52,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dist-macos
-          path: dist/out/*
+          path: |
+            dist/out/*.tar.gz
+            dist/out/*.sha256
 
   build-linux:
     runs-on: ubuntu-latest
@@ -92,7 +94,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dist-linux
-          path: dist/out/*
+          path: |
+            dist/out/*.tar.gz
+            dist/out/*.sha256
 
   build-windows:
     runs-on: windows-latest
@@ -134,7 +138,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dist-windows
-          path: dist/out/*
+          path: |
+            dist/out/*.zip
+            dist/out/*.sha256
 
   upload:
     runs-on: ubuntu-latest
