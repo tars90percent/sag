@@ -32,27 +32,27 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ref="${GITHUB_REF_NAME:-${{ inputs.tag }}}"
+          ref="${{ inputs.tag }}"
+          if [ -z "$ref" ]; then ref="${GITHUB_REF_NAME}"; fi
           version="${ref#v}"
-          mkdir -p dist/pkg
+          mkdir -p dist/build dist/out/pkg
 
-          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -o dist/sag-darwin-arm64 ./cmd/sag
-          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -o dist/sag-darwin-amd64 ./cmd/sag
+          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -o dist/build/sag-darwin-arm64 ./cmd/sag
+          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -o dist/build/sag-darwin-amd64 ./cmd/sag
 
-          lipo -create -output dist/sag dist/sag-darwin-arm64 dist/sag-darwin-amd64
-          rm -f dist/sag-darwin-arm64 dist/sag-darwin-amd64
+          lipo -create -output dist/build/sag dist/build/sag-darwin-arm64 dist/build/sag-darwin-amd64
 
-          cp README.md LICENSE dist/pkg/
-          cp dist/sag dist/pkg/
-          tar -C dist/pkg -czf "dist/sag_${version}_darwin_universal.tar.gz" sag README.md LICENSE
+          cp README.md LICENSE dist/out/pkg/
+          cp dist/build/sag dist/out/pkg/
+          tar -C dist/out/pkg -czf "dist/out/sag_${version}_darwin_universal.tar.gz" sag README.md LICENSE
 
-          shasum -a 256 "dist/sag_${version}_darwin_universal.tar.gz" > "dist/sag_${version}_darwin_universal.tar.gz.sha256"
+          shasum -a 256 "dist/out/sag_${version}_darwin_universal.tar.gz" > "dist/out/sag_${version}_darwin_universal.tar.gz.sha256"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dist-macos
-          path: dist/*
+          path: dist/out/*
 
   build-linux:
     runs-on: ubuntu-latest
@@ -75,23 +75,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ref="${GITHUB_REF_NAME:-${{ inputs.tag }}}"
+          ref="${{ inputs.tag }}"
+          if [ -z "$ref" ]; then ref="${GITHUB_REF_NAME}"; fi
           version="${ref#v}"
-          mkdir -p dist/pkg
+          mkdir -p dist/build dist/out/pkg
 
-          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o dist/sag ./cmd/sag
+          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o dist/build/sag ./cmd/sag
 
-          cp README.md LICENSE dist/pkg/
-          cp dist/sag dist/pkg/
-          tar -C dist/pkg -czf "dist/sag_${version}_linux_amd64.tar.gz" sag README.md LICENSE
+          cp README.md LICENSE dist/out/pkg/
+          cp dist/build/sag dist/out/pkg/
+          tar -C dist/out/pkg -czf "dist/out/sag_${version}_linux_amd64.tar.gz" sag README.md LICENSE
 
-          sha256sum "dist/sag_${version}_linux_amd64.tar.gz" > "dist/sag_${version}_linux_amd64.tar.gz.sha256"
+          sha256sum "dist/out/sag_${version}_linux_amd64.tar.gz" > "dist/out/sag_${version}_linux_amd64.tar.gz.sha256"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dist-linux
-          path: dist/*
+          path: dist/out/*
 
   build-windows:
     runs-on: windows-latest
@@ -110,23 +111,22 @@ jobs:
       - name: Build windows amd64 binary
         shell: pwsh
         run: |
-          $ref = "${env:GITHUB_REF_NAME}"
-          if ([string]::IsNullOrWhiteSpace($ref)) { $ref = "${{ inputs.tag }}" }
+          $ref = "${{ inputs.tag }}"
+          if ([string]::IsNullOrWhiteSpace($ref)) { $ref = "${env:GITHUB_REF_NAME}" }
           $version = $ref.TrimStart("v")
-          New-Item -ItemType Directory -Force -Path dist\pkg | Out-Null
+          New-Item -ItemType Directory -Force -Path dist\out\pkg | Out-Null
 
           $env:CGO_ENABLED = "0"
           $env:GOOS = "windows"
           $env:GOARCH = "amd64"
-          go build -o dist\sag.exe .\cmd\sag
+          go build -o dist\out\pkg\sag.exe .\cmd\sag
 
-          Copy-Item README.md dist\pkg\
-          Copy-Item LICENSE dist\pkg\
-          Copy-Item dist\sag.exe dist\pkg\
+          Copy-Item README.md dist\out\pkg\
+          Copy-Item LICENSE dist\out\pkg\
 
-          $zip = "dist\sag_${version}_windows_amd64.zip"
+          $zip = "dist\out\sag_${version}_windows_amd64.zip"
           if (Test-Path $zip) { Remove-Item $zip -Force }
-          Compress-Archive -Path dist\pkg\sag.exe,dist\pkg\README.md,dist\pkg\LICENSE -DestinationPath $zip
+          Compress-Archive -Path dist\out\pkg\sag.exe,dist\out\pkg\README.md,dist\out\pkg\LICENSE -DestinationPath $zip
 
           (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() + "  " + (Split-Path $zip -Leaf) | Out-File -Encoding ascii "$zip.sha256"
 
@@ -134,7 +134,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: dist-windows
-          path: dist/*
+          path: dist/out/*
 
   upload:
     runs-on: ubuntu-latest
@@ -152,7 +152,8 @@ jobs:
           mkdir -p out
           find dist -type f -maxdepth 3 -print0 | xargs -0 -I{} cp {} out/
 
-          ref="${GITHUB_REF_NAME:-${{ inputs.tag }}}"
+          ref="${{ inputs.tag }}"
+          if [ -z "$ref" ]; then ref="${GITHUB_REF_NAME}"; fi
           version="${ref#v}"
           cat out/*.sha256 > "out/sag_${version}_checksums.txt"
 
@@ -161,4 +162,3 @@ jobs:
         with:
           tag_name: ${{ inputs.tag || github.ref_name }}
           files: out/*
-
