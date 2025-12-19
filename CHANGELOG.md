@@ -1,15 +1,13 @@
 # Changelog
 
-## 0.2.1 - 2025-12-19
-### Changed
-- Default model is now `eleven_v3` (override with `--model-id eleven_multilingual_v2` for a stable baseline).
-
 ## 0.2.0 - 2025-12-19
 ### Added
 - Voice control flags: `--stability`, `--similarity`/`--similarity-boost`, `--style`, `--speaker-boost`/`--no-speaker-boost`.
 - Request controls: `--seed`, `--normalize (auto|on|off)`, `--lang` (ISO 639-1).
 - `--metrics` to print basic request stats (chars/bytes/duration) to stderr.
 - `sag prompting` command and README section with prompting tips.
+### Changed
+- Default model is now `eleven_v3` (override with `--model-id eleven_multilingual_v2` for a stable baseline).
 
 ## 0.1.1 - 2025-12-19
 ### Changed
