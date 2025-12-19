@@ -385,7 +385,7 @@ func convertAndPlay(ctx context.Context, client *elevenlabs.Client, opts speakOp
 func resolveVoice(ctx context.Context, client *elevenlabs.Client, voiceInput string) (string, error) {
 	voiceInput = strings.TrimSpace(voiceInput)
 	if voiceInput == "" {
-		ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 		voices, err := client.ListVoices(ctx, "")
 		if err != nil {
@@ -398,7 +398,7 @@ func resolveVoice(ctx context.Context, client *elevenlabs.Client, voiceInput str
 		return voices[0].VoiceID, nil
 	}
 	if voiceInput == "?" {
-		ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
 		voices, err := client.ListVoices(ctx, "")
 		if err != nil {
@@ -424,7 +424,7 @@ func resolveVoice(ctx context.Context, client *elevenlabs.Client, voiceInput str
 		return voiceInput, nil
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	voices, err := client.ListVoices(ctx, voiceInput)
 	if err != nil {
