@@ -87,6 +87,22 @@ Highlights:
 - v3: use audio tags like `[whispers]` and pause tags like `[short pause]`.
 - Use the voice knobs: `--stability`, `--similarity`, `--style`, `--speaker-boost`, plus request controls `--seed`, `--normalize`, `--lang`.
 
+## Models / engines
+
+`sag` supports any ElevenLabs `model_id` via `--model-id` (we pass it through). Practical defaults + common IDs:
+
+| Engine | `--model-id` | Prompting style | Best for |
+|---|---|---|---|
+| v3 (alpha) | `eleven_v3` (default) | Audio tags like `[whispers]`, `[short pause]` (no SSML `<break>`) | Most expressive / “acting” |
+| v2 (stable) | `eleven_multilingual_v2` | SSML `<break>` supported | Reliable baseline, simple prompts |
+| v2.5 Flash | `eleven_flash_v2_5` | SSML `<break>` supported | Lowest latency + cheaper self-serve |
+| v2.5 Turbo | `eleven_turbo_v2_5` | SSML `<break>` supported | Balanced speed/quality + cheaper self-serve |
+
+Notes:
+- SSML `<break>` works on v2/v2.5, not v3. Use pause tags on v3 instead.
+- Input limits differ by engine (v3 ~5k chars; v2 ~10k; v2.5 Turbo/Flash ~40k). If you hit limits, chunk text and stitch audio.
+- Cost is per character and plan/voice dependent. Common rule of thumb: v3/v2 are 1 credit/char; v2.5 Turbo/Flash are ~0.5 credits/char (plus possible voice multipliers).
+
 ## Development
 - With pnpm:
   - `pnpm format`

@@ -16,6 +16,11 @@ Goal: “more natural” output + controllable delivery.
 - Supports SSML `<break time="1.5s" />` for precise pauses (up to ~3s).
 - Some English-only models support SSML `<phoneme>` for pronunciation (not yet exposed in `sag`).
 
+### v2.5 speed/cost options
+- Flash: `eleven_flash_v2_5` (lowest latency; common “cheap + fast” choice)
+- Turbo: `eleven_turbo_v2_5` (balanced speed/quality; also cheaper on self-serve)
+- Prompting looks like v2 (plain text + SSML `<break>`). If numbers/units sound off, try `--normalize auto` and/or respell.
+
 ## Universal “make it sound good” rules
 - Write like a script: short sentences; newlines for beats.
 - Punctuation is control: commas + em-dashes slow; ellipses add weight; `!` adds energy.
@@ -58,10 +63,16 @@ Request controls:
 
 ## Quick recipes
 
-Natural narrator (v2 default):
+Natural narrator (v2 baseline):
 ```
 sag speak -v Roger --stability 0.5 --similarity 0.75 --style 0.0 --normalize auto --lang en \
   "We shipped today. It was close… but it worked."
+```
+
+Fast + cheap (v2.5 Flash):
+```
+sag speak -v Roger --model-id eleven_flash_v2_5 --stability 0.5 --normalize auto --lang en \
+  "Short. Crisp. Low latency."
 ```
 
 Expressive (v3):
