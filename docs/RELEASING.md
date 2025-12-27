@@ -12,14 +12,15 @@ Follow these steps for each release. Title GitHub releases as `sag <version>`.
 - Run the gates: `pnpm format && pnpm lint && pnpm test && pnpm build`.
 - Tag the release: `git tag -a v<version> -m "Release <version>"` after commits; push tags with `git push origin main --tags`.
 - GitHub Actions attaches binaries (macOS universal, Linux amd64, Windows amd64) to the GitHub release automatically (workflow: `Release Binaries`).
-- Create source archive (used by Homebrew):
-  - `git archive --format=tar.gz --output /tmp/sag-<version>.tar.gz v<version>`
 - Update Homebrew tap formula (`../homebrew-tap/Formula/sag.rb`):
   1. Set `version "<version>"`.
   2. Set `url "https://github.com/steipete/sag/archive/refs/tags/v<version>.tar.gz"`.
-  3. Update `sha256` using `shasum -a 256 /tmp/sag-<version>.tar.gz`.
-  4. Ensure build step uses `system "go", "build", *std_go_args(ldflags: "-s -w"), "./cmd/sag"`.
-  5. Commit and push in tap repo: `git commit -am "sag v<version>" && git push origin main`.
+  3. Update `sha256` from the same GitHub tag tarball:
+     - `curl -L -o /tmp/sag-<version>.tar.gz https://github.com/steipete/sag/archive/refs/tags/v<version>.tar.gz`
+     - `shasum -a 256 /tmp/sag-<version>.tar.gz`
+  4. Verify formula checksum matches the downloaded tarball.
+  5. Ensure build step uses `system "go", "build", *std_go_args(ldflags: "-s -w"), "./cmd/sag"`.
+  6. Commit and push in tap repo: `git commit -am "sag v<version>" && git push origin main`.
 - Verify Homebrew install from tap:
   - `brew update && brew reinstall steipete/tap/sag`
   - `brew test steipete/tap/sag`
@@ -27,6 +28,6 @@ Follow these steps for each release. Title GitHub releases as `sag <version>`.
 - Create GitHub release for `v<version>`:
   - Title: `sag <version>`
   - Body: bullets from `CHANGELOG.md` for that version
-  - Assets: source tarball `/tmp/sag-<version>.tar.gz` (mention SHA256 in body)
+  - Assets: optional source tarball `/tmp/sag-<version>.tar.gz` (mention SHA256 in body)
 - Smoke-test CLI locally: `sag --help`, `sag voices --limit 3`, `sag -v Roger "hello"`.
 - Announce: optional note with `brew update && brew upgrade steipete/tap/sag`.
