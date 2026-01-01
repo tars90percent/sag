@@ -117,7 +117,7 @@ func TestResolveTextEmptyFile(t *testing.T) {
 }
 
 func TestResolveVoiceDefaultsToFirst(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		if _, err := w.Write([]byte(`{"voices":[{"voice_id":"id1","name":"Alpha","category":"premade"},{"voice_id":"id2","name":"Beta","category":"premade"}]}`)); err != nil {
 			t.Fatalf("write response: %v", err)
 		}
@@ -136,7 +136,7 @@ func TestResolveVoiceDefaultsToFirst(t *testing.T) {
 
 func TestResolveVoicePassThroughID(t *testing.T) {
 	// Should short-circuit without hitting the server when input looks like an ID.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Fatalf("server should not be called for ID pass-through")
 	}))
 	defer srv.Close()
@@ -152,7 +152,7 @@ func TestResolveVoicePassThroughID(t *testing.T) {
 }
 
 func TestResolveVoiceClosestMatch(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		if _, err := w.Write([]byte(`{"voices":[{"voice_id":"id1","name":"Near","category":"premade"}]}`)); err != nil {
 			t.Fatalf("write response: %v", err)
 		}
@@ -176,7 +176,7 @@ func TestResolveVoiceClosestMatch(t *testing.T) {
 }
 
 func TestResolveVoiceListOutputsTable(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		if _, err := w.Write([]byte(`{"voices":[{"voice_id":"id1","name":"Alpha","category":"premade"}]}`)); err != nil {
 			t.Fatalf("write response: %v", err)
 		}
@@ -274,7 +274,7 @@ func TestStreamAndPlayWithPlayback(t *testing.T) {
 	})
 	defer restore()
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("stream-play"))
 	}))
 	defer srv.Close()
@@ -301,7 +301,7 @@ func TestConvertAndPlayWithPlayback(t *testing.T) {
 	})
 	defer restore()
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("convert-play"))
 	}))
 	defer srv.Close()
@@ -379,7 +379,7 @@ func TestResolveVoiceByName(t *testing.T) {
 func stubPlay(t *testing.T, fn func([]byte)) func() {
 	t.Helper()
 	orig := playToSpeakers
-	playToSpeakers = func(ctx context.Context, r io.Reader) error {
+	playToSpeakers = func(_ context.Context, r io.Reader) error {
 		b, _ := io.ReadAll(r)
 		fn(b)
 		return nil

@@ -1,3 +1,5 @@
+version: "2"
+
 run:
   timeout: 3m
   tests: true
@@ -7,25 +9,19 @@ linters:
   enable:
     - govet
     - staticcheck
-    - gofmt
-    - goimports
     - revive
     - ineffassign
     - errcheck
-    - gosimple
 
 linters-settings:
   revive:
+    enable-all-rules: false
     severity: warning
     rules:
       - name: exported
         severity: warning
       - name: var-naming
         severity: warning
-  gofmt:
-    simplify: true
-  goimports:
-    local-prefixes: say11
 
 issues:
   exclude-use-default: false

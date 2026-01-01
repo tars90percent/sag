@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestMainHelp(t *testing.T) {
+func TestMainHelp(_ *testing.T) {
 	orig := os.Args
 	defer func() { os.Args = orig }()
 	os.Args = []string{"sag", "--help"}

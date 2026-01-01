@@ -135,7 +135,7 @@ func TestStreamTTS_PayloadFields(t *testing.T) {
 }
 
 func TestStreamTTS_Error(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "nope", http.StatusBadRequest)
 	}))
 	defer srv.Close()
@@ -167,7 +167,7 @@ func TestConvertTTS(t *testing.T) {
 }
 
 func TestConvertTTS_Error(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "fail", http.StatusInternalServerError)
 	}))
 	defer srv.Close()

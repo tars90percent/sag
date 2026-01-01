@@ -25,10 +25,10 @@ func init() {
 	cmd := &cobra.Command{
 		Use:   "voices",
 		Short: "List available ElevenLabs voices",
-		PreRunE: func(cmd *cobra.Command, args []string) error {
+		PreRunE: func(_ *cobra.Command, _ []string) error {
 			return ensureAPIKey()
 		},
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			client := elevenlabs.NewClient(cfg.APIKey, cfg.BaseURL)
 			ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
 			defer cancel()

@@ -58,7 +58,7 @@ func init() {
 		Short: "Speak the provided text using ElevenLabs TTS (default: stream to speakers)",
 		Long:  "If no text argument is provided, the command reads from stdin.\n\nTip: run `sag prompting` for model-specific prompting tips and recommended flag combinations.",
 		Args:  cobra.ArbitraryArgs,
-		PreRunE: func(cmd *cobra.Command, args []string) error {
+		PreRunE: func(_ *cobra.Command, _ []string) error {
 			return ensureAPIKey()
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {

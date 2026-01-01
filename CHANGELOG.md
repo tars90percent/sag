@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+
+## 0.2.1 - 2026-01-01
 ### Fixed
 - `-o/--output` now disables speaker playback by default unless `--play` is explicitly set. Previously `-o` saved to file AND played through speakers, which was confusing.
 
