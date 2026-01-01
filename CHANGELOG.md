@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+### Fixed
+- `-o/--output` now disables speaker playback by default unless `--play` is explicitly set. Previously `-o` saved to file AND played through speakers, which was confusing.
+
 ## 0.2.0 - 2025-12-19
 ### Added
 - Voice control flags: `--stability`, `--similarity`/`--similarity-boost`, `--style`, `--speaker-boost`/`--no-speaker-boost`.
