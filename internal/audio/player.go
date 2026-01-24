@@ -6,9 +6,11 @@ import (
 	"io"
 	"time"
 
-	"github.com/hajimehoshi/go-mp3"
 	"github.com/ebitengine/oto/v3"
+	"github.com/hajimehoshi/go-mp3"
 )
+
+const playbackPollInterval = 100 * time.Millisecond
 
 // StreamToSpeakers decodes MP3 audio from the reader and plays it to the default output device.
 func StreamToSpeakers(ctx context.Context, r io.Reader) error {
@@ -23,9 +25,9 @@ func StreamToSpeakers(ctx context.Context, r io.Reader) error {
 	)
 
 	audioCtx, ready, err := oto.NewContext(&oto.NewContextOptions{
-		SampleRate:      decoder.SampleRate(),
-		ChannelCount:    channelCount,
-		Format:          format,
+		SampleRate:   decoder.SampleRate(),
+		ChannelCount: channelCount,
+		Format:       format,
 	})
 	if err != nil {
 		return fmt.Errorf("audio context: %w", err)
@@ -35,18 +37,22 @@ func StreamToSpeakers(ctx context.Context, r io.Reader) error {
 	player := audioCtx.NewPlayer(decoder)
 	player.Play()
 
-	ticker := time.NewTicker(100 * time.Millisecond)
+	return waitForPlayback(ctx, player)
+}
+
+func waitForPlayback(ctx context.Context, player *oto.Player) error {
+	ticker := time.NewTicker(playbackPollInterval)
 	defer ticker.Stop()
 
 	for {
+		if !player.IsPlaying() {
+			return nil
+		}
 		select {
 		case <-ctx.Done():
 			player.Pause()
 			return ctx.Err()
 		case <-ticker.C:
-			if !player.IsPlaying() {
-				return nil
-			}
 		}
 	}
 }
