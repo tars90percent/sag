@@ -22,7 +22,7 @@ var (
 		Short:   "🗣️ ElevenLabs speech, mac-style ease",
 		Long:    "Command-line ElevenLabs TTS with macOS playback. Call it like macOS 'say': if you skip the subcommand, text args are passed to 'speak' (e.g. `sag \"Hello\"`).\n\nTip: run `sag prompting` for model-specific prompting tips.\nModels: `eleven_v3` (default), `eleven_multilingual_v2` (stable), `eleven_flash_v2_5` (fast/cheap), `eleven_turbo_v2_5` (balanced).",
 		Example: "  sag \"Hi Peter\"\n  echo 'piped input' | sag\n  sag speak -v Roger --rate 200 \"Faster speech\"\n  sag prompting",
-		Version: "0.2.1",
+		Version: "0.2.2",
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
 			if versionFlag {
 				fmt.Println(cmd.Root().Name(), cmd.Root().Version)

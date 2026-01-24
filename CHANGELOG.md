@@ -1,6 +1,8 @@
 # Changelog
 
-## 0.2.2 - Unreleased
+## Unreleased
+
+## 0.2.2 - 2026-01-24
 ### Fixed
 - Voice ID resolution respects `--voice-id` and avoids misclassifying long names; `--rate` now overrides `--speed` validation. (#7, thanks @joelbdavies)
 - Voice name matching now uses exact/substring checks without falling back to unrelated voices; voice search is handled client-side. (#8, thanks @joelbdavies)
