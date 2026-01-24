@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"strings"
 	"time"
 )
 
@@ -35,16 +36,23 @@ func NewClient(apiKey, baseURL string) *Client {
 
 // Voice represents a voice entry returned by ElevenLabs.
 type Voice struct {
-	VoiceID    string            `json:"voice_id"`
-	Name       string            `json:"name"`
-	Category   string            `json:"category"`
-	Labels     map[string]string `json:"labels,omitempty"`
-	PreviewURL string            `json:"preview_url"`
+	VoiceID     string            `json:"voice_id"`
+	Name        string            `json:"name"`
+	Category    string            `json:"category"`
+	Description string            `json:"description"`
+	Labels      map[string]string `json:"labels,omitempty"`
+	PreviewURL  string            `json:"preview_url"`
 }
 
 type listVoicesResponse struct {
 	Voices []Voice `json:"voices"`
 	Next   *string `json:"next_page_token,omitempty"`
+}
+
+type listVoicesV2Response struct {
+	Voices        []Voice `json:"voices"`
+	HasMore       bool    `json:"has_more"`
+	NextPageToken *string `json:"next_page_token,omitempty"`
 }
 
 // ListVoices fetches available voices.
@@ -79,6 +87,103 @@ func (c *Client) ListVoices(ctx context.Context) ([]Voice, error) {
 		return nil, err
 	}
 	return body.Voices, nil
+}
+
+// SearchVoices finds voices using the API's search query parameter.
+func (c *Client) SearchVoices(ctx context.Context, search string, limit int) ([]Voice, error) {
+	search = strings.TrimSpace(search)
+	if search == "" {
+		return c.ListVoices(ctx)
+	}
+
+	pageSize := 100
+	if limit > 0 && limit < pageSize {
+		pageSize = limit
+	}
+
+	voices := make([]Voice, 0, pageSize)
+	var nextPageToken *string
+	for {
+		u, err := url.Parse(c.baseURL)
+		if err != nil {
+			return nil, err
+		}
+		u.Path = path.Join(u.Path, "/v2/voices")
+		q := u.Query()
+		q.Set("search", search)
+		q.Set("page_size", fmt.Sprint(pageSize))
+		q.Set("include_total_count", "false")
+		if nextPageToken != nil && *nextPageToken != "" {
+			q.Set("next_page_token", *nextPageToken)
+		}
+		u.RawQuery = q.Encode()
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("xi-api-key", c.apiKey)
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, err
+		}
+
+		if resp.StatusCode >= 400 {
+			_ = resp.Body.Close()
+			return nil, fmt.Errorf("search voices failed: %s", resp.Status)
+		}
+
+		var body listVoicesV2Response
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			_ = resp.Body.Close()
+			return nil, err
+		}
+		_ = resp.Body.Close()
+		voices = append(voices, body.Voices...)
+		if limit > 0 && len(voices) >= limit {
+			return voices[:limit], nil
+		}
+		if !body.HasMore || body.NextPageToken == nil || *body.NextPageToken == "" {
+			return voices, nil
+		}
+		nextPageToken = body.NextPageToken
+	}
+}
+
+// GetVoice fetches metadata for a specific voice.
+func (c *Client) GetVoice(ctx context.Context, voiceID string) (Voice, error) {
+	u, err := url.Parse(c.baseURL)
+	if err != nil {
+		return Voice{}, err
+	}
+	u.Path = path.Join(u.Path, "/v1/voices", voiceID)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return Voice{}, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("xi-api-key", c.apiKey)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return Voice{}, err
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+
+	if resp.StatusCode >= 400 {
+		return Voice{}, fmt.Errorf("get voice failed: %s", resp.Status)
+	}
+
+	var voice Voice
+	if err := json.NewDecoder(resp.Body).Decode(&voice); err != nil {
+		return Voice{}, err
+	}
+	return voice, nil
 }
 
 // TTSRequest configures a text-to-speech request payload.

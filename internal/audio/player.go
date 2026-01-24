@@ -2,8 +2,10 @@ package audio
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/ebitengine/oto/v3"
@@ -11,6 +13,14 @@ import (
 )
 
 const playbackPollInterval = 100 * time.Millisecond
+
+var (
+	audioCtxMu      sync.Mutex
+	audioCtx        *oto.Context
+	audioReady      chan struct{}
+	audioSampleRate int
+	audioContextErr error
+)
 
 // StreamToSpeakers decodes MP3 audio from the reader and plays it to the default output device.
 func StreamToSpeakers(ctx context.Context, r io.Reader) error {
@@ -24,20 +34,55 @@ func StreamToSpeakers(ctx context.Context, r io.Reader) error {
 		format       = oto.FormatSignedInt16LE
 	)
 
-	audioCtx, ready, err := oto.NewContext(&oto.NewContextOptions{
-		SampleRate:   decoder.SampleRate(),
+	audioCtx, ready, err := getAudioContext(decoder.SampleRate(), channelCount, format)
+	if err != nil {
+		return fmt.Errorf("audio context: %w", err)
+	}
+	if ready != nil {
+		<-ready
+	}
+
+	player := audioCtx.NewPlayer(decoder)
+	defer func() {
+		_ = player.Close()
+	}()
+	player.Play()
+
+	return waitForPlayback(ctx, player)
+}
+
+func getAudioContext(sampleRate, channelCount int, format oto.Format) (*oto.Context, chan struct{}, error) {
+	audioCtxMu.Lock()
+	defer audioCtxMu.Unlock()
+
+	if audioCtx != nil {
+		if audioContextErr != nil {
+			return nil, nil, audioContextErr
+		}
+		if audioSampleRate != sampleRate {
+			return nil, nil, fmt.Errorf("context already initialized at %d Hz; got %d Hz", audioSampleRate, sampleRate)
+		}
+		return audioCtx, audioReady, nil
+	}
+
+	if sampleRate <= 0 {
+		return nil, nil, errors.New("invalid sample rate")
+	}
+
+	ctx, ready, err := oto.NewContext(&oto.NewContextOptions{
+		SampleRate:   sampleRate,
 		ChannelCount: channelCount,
 		Format:       format,
 	})
 	if err != nil {
-		return fmt.Errorf("audio context: %w", err)
+		audioContextErr = err
+		return nil, nil, err
 	}
-	<-ready
-
-	player := audioCtx.NewPlayer(decoder)
-	player.Play()
-
-	return waitForPlayback(ctx, player)
+	audioCtx = ctx
+	audioReady = ready
+	audioSampleRate = sampleRate
+	audioContextErr = nil
+	return audioCtx, audioReady, nil
 }
 
 func waitForPlayback(ctx context.Context, player *oto.Player) error {

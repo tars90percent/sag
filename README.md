@@ -76,6 +76,9 @@ Key flags (subset):
 Voices:
 ```bash
 sag voices --search english --limit 20
+sag voices --search english --limit 5 --try
+sag voices --query "crazy scientist" --limit 5 --try
+sag voices --label accent=british --label use_case=character --limit 10
 ```
 
 ## Prompting (make it sound better)

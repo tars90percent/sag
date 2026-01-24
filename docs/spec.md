@@ -51,8 +51,11 @@ sag speak -v "Roger" -r 200 "mac say style flags"
 ### `sag voices`
 - Lists voices via `GET /v1/voices` (server-side search when supported).
 - Flags:
-  - `--search <query>`: filter by name
+  - `--search <query>`: search by name (server-side when available)
+  - `--query <text>`: semantic query across name/description/labels (client-side)
+  - `--label key=value`: filter by voice label (repeatable)
   - `--limit <n>`: truncate output (default 100)
+  - `--try`: play preview audio for the listed voices (requires `--search`, `--query`, `--label`, or `--limit`)
 
 Sample:
 ```

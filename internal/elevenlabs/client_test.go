@@ -38,6 +38,70 @@ func TestListVoices(t *testing.T) {
 	}
 }
 
+func TestSearchVoices(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/voices" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		q := r.URL.Query()
+		if q.Get("search") != "rog" {
+			t.Fatalf("unexpected search query: %q", q.Get("search"))
+		}
+		if q.Get("page_size") != "2" {
+			t.Fatalf("unexpected page_size: %q", q.Get("page_size"))
+		}
+		if q.Get("include_total_count") != "false" {
+			t.Fatalf("unexpected include_total_count: %q", q.Get("include_total_count"))
+		}
+
+		calls++
+		switch calls {
+		case 1:
+			if q.Get("next_page_token") != "" {
+				t.Fatalf("unexpected next_page_token: %q", q.Get("next_page_token"))
+			}
+			_, _ = w.Write([]byte(`{"voices":[{"voice_id":"id1","name":"Roger"}],"has_more":true,"next_page_token":"p2"}`))
+		case 2:
+			if q.Get("next_page_token") != "p2" {
+				t.Fatalf("unexpected next_page_token: %q", q.Get("next_page_token"))
+			}
+			_, _ = w.Write([]byte(`{"voices":[{"voice_id":"id2","name":"Rogue"}],"has_more":false}`))
+		default:
+			t.Fatalf("unexpected request count: %d", calls)
+		}
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", srv.URL)
+	voices, err := c.SearchVoices(context.Background(), "rog", 2)
+	if err != nil {
+		t.Fatalf("SearchVoices error: %v", err)
+	}
+	if len(voices) != 2 {
+		t.Fatalf("expected 2 voices, got: %+v", voices)
+	}
+}
+
+func TestGetVoice(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/voices/id1" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"voice_id":"id1","name":"Alpha","preview_url":"https://example.com/alpha.mp3"}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient("key", srv.URL)
+	voice, err := c.GetVoice(context.Background(), "id1")
+	if err != nil {
+		t.Fatalf("GetVoice error: %v", err)
+	}
+	if voice.PreviewURL != "https://example.com/alpha.mp3" {
+		t.Fatalf("unexpected preview_url: %q", voice.PreviewURL)
+	}
+}
+
 func TestStreamTTS(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.Contains(r.URL.Path, "/v1/text-to-speech/voice123/stream") {
