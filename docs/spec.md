@@ -3,7 +3,7 @@
 CLI that mirrors macOS `say` but uses ElevenLabs for synthesis. Defaults to streaming directly to speakers and can also write audio files.
 
 ## Runtime & deps
-- Go 1.22+
+- Go 1.24+
 - Playback uses built-in Go audio (go-mp3 + oto) and should work on macOS/Linux/Windows with a default output device.
 - Auth via `ELEVENLABS_API_KEY` (or `--api-key` flag).
 

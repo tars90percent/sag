@@ -41,11 +41,10 @@ func StreamToSpeakers(ctx context.Context, r io.Reader) error {
 	for {
 		select {
 		case <-ctx.Done():
-			_ = player.Close()
+			player.Pause()
 			return ctx.Err()
 		case <-ticker.C:
 			if !player.IsPlaying() {
-				_ = player.Close()
 				return nil
 			}
 		}

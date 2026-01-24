@@ -12,7 +12,7 @@ Go toolchain:
 ```bash
 go install ./cmd/sag
 ```
-Requires Go 1.22+.
+Requires Go 1.24+.
 
 ## Configuration
 - `ELEVENLABS_API_KEY` (required)
