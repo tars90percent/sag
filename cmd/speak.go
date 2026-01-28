@@ -13,6 +13,7 @@ import (
 
 	"github.com/steipete/sag/internal/audio"
 	"github.com/steipete/sag/internal/elevenlabs"
+	"github.com/steipete/sag/internal/minimax"
 
 	"github.com/spf13/cobra"
 )
@@ -44,6 +45,11 @@ const defaultWPM = 175 // matches macOS `say` default rate
 
 var playToSpeakers = audio.StreamToSpeakers
 
+const (
+	providerElevenLabs = "elevenlabs"
+	providerMiniMax    = "minimax"
+)
+
 func init() {
 	opts := speakOptions{
 		modelID:   "eleven_v3",
@@ -55,39 +61,63 @@ func init() {
 
 	cmd := &cobra.Command{
 		Use:   "speak [text]",
-		Short: "Speak the provided text using ElevenLabs TTS (default: stream to speakers)",
+		Short: "Speak the provided text using TTS (default: stream to speakers)",
 		Long:  "If no text argument is provided, the command reads from stdin.\n\nTip: run `sag prompting` for model-specific prompting tips and recommended flag combinations.",
 		Args:  cobra.ArbitraryArgs,
 		PreRunE: func(_ *cobra.Command, _ []string) error {
-			return ensureAPIKey()
+			return ensureAPIKeyForProvider(detectProvider(opts.modelID))
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := applyRateAndSpeed(&opts); err != nil {
 				return err
 			}
 
+			provider := detectProvider(opts.modelID)
 			forceVoiceID := cmd.Flags().Changed("voice-id")
 			voiceInput := opts.voiceID
 			if voiceInput == "" {
-				if env := os.Getenv("ELEVENLABS_VOICE_ID"); env != "" {
-					voiceInput = env
-					forceVoiceID = true
-				} else if env := os.Getenv("SAG_VOICE_ID"); env != "" {
-					voiceInput = env
-					forceVoiceID = true
+				if provider == providerMiniMax {
+					if env := os.Getenv("MINIMAX_VOICE_ID"); env != "" {
+						voiceInput = env
+						forceVoiceID = true
+					} else if env := os.Getenv("SAG_VOICE_ID"); env != "" {
+						voiceInput = env
+						forceVoiceID = true
+					}
+				} else {
+					if env := os.Getenv("ELEVENLABS_VOICE_ID"); env != "" {
+						voiceInput = env
+						forceVoiceID = true
+					} else if env := os.Getenv("SAG_VOICE_ID"); env != "" {
+						voiceInput = env
+						forceVoiceID = true
+					}
 				}
 			}
-			client := elevenlabs.NewClient(cfg.APIKey, cfg.BaseURL)
+			elevenClient := elevenlabs.NewClient(cfg.APIKey, cfg.BaseURL)
+			miniClient := minimax.NewClient(cfg.APIKey, minimaxBaseURL())
 
-			voiceID, err := resolveVoice(cmd.Context(), client, voiceInput, forceVoiceID)
-			if err != nil {
-				return err
+			switch provider {
+			case providerMiniMax:
+				voiceID, err := resolveMiniMaxVoice(cmd.Context(), miniClient, voiceInput, forceVoiceID)
+				if err != nil {
+					return err
+				}
+				if voiceID == "" {
+					return nil
+				}
+				opts.voiceID = voiceID
+			default:
+				voiceID, err := resolveVoice(cmd.Context(), elevenClient, voiceInput, forceVoiceID)
+				if err != nil {
+					return err
+				}
+				if voiceID == "" {
+					// Likely printed voices for '?' request.
+					return nil
+				}
+				opts.voiceID = voiceID
 			}
-			if voiceID == "" {
-				// Likely printed voices for '?' request.
-				return nil
-			}
-			opts.voiceID = voiceID
 
 			text, err := resolveText(args, opts.inputFile)
 			if err != nil {
@@ -96,7 +126,11 @@ func init() {
 
 			// If user provided output path with a known extension, infer a compatible format.
 			if opts.outputPath != "" {
-				if inferred := inferFormatFromExt(opts.outputPath); inferred != "" {
+				if provider == providerMiniMax {
+					if inferred := inferMiniMaxFormatFromExt(opts.outputPath); inferred != "" {
+						opts.outputFmt = inferred
+					}
+				} else if inferred := inferFormatFromExt(opts.outputPath); inferred != "" {
 					opts.outputFmt = inferred
 				}
 				// Disable playback when -o is set, unless --play was explicitly provided
@@ -108,24 +142,44 @@ func init() {
 			ctx, cancel := context.WithTimeout(cmd.Context(), 90*time.Second)
 			defer cancel()
 
-			payload, err := buildTTSRequest(cmd, opts, text)
-			if err != nil {
-				return err
-			}
-
 			start := time.Now()
 			var bytes int64
-			if opts.stream {
-				n, err := streamAndPlay(ctx, client, opts, payload)
-				bytes = n
+			switch provider {
+			case providerMiniMax:
+				payload, err := buildMiniMaxTTSRequest(opts, text)
 				if err != nil {
 					return err
 				}
-			} else {
-				n, err := convertAndPlay(ctx, client, opts, payload)
-				bytes = n
+				if opts.stream {
+					n, err := streamAndPlayMiniMax(ctx, miniClient, opts, payload)
+					bytes = n
+					if err != nil {
+						return err
+					}
+				} else {
+					n, err := convertAndPlayMiniMax(ctx, miniClient, opts, payload)
+					bytes = n
+					if err != nil {
+						return err
+					}
+				}
+			default:
+				payload, err := buildTTSRequest(cmd, opts, text)
 				if err != nil {
 					return err
+				}
+				if opts.stream {
+					n, err := streamAndPlay(ctx, elevenClient, opts, payload)
+					bytes = n
+					if err != nil {
+						return err
+					}
+				} else {
+					n, err := convertAndPlay(ctx, elevenClient, opts, payload)
+					bytes = n
+					if err != nil {
+						return err
+					}
 				}
 			}
 			if opts.metrics {
@@ -427,6 +481,93 @@ func convertAndPlay(ctx context.Context, client *elevenlabs.Client, opts speakOp
 	return n, nil
 }
 
+func streamAndPlayMiniMax(ctx context.Context, client *minimax.Client, opts speakOptions, payload minimax.TTSRequest) (int64, error) {
+	resp, err := client.StreamTTS(ctx, opts.voiceID, payload)
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		_ = resp.Close()
+	}()
+
+	writers := make([]io.Writer, 0, 2)
+	var file io.WriteCloser
+	if opts.outputPath != "" {
+		if err := os.MkdirAll(filepath.Dir(opts.outputPath), 0o755); err != nil {
+			return 0, err
+		}
+		file, err = os.Create(opts.outputPath)
+		if err != nil {
+			return 0, err
+		}
+		defer func() {
+			_ = file.Close()
+		}()
+		writers = append(writers, file)
+	}
+
+	if opts.play {
+		pr, pw := io.Pipe()
+		writers = append(writers, pw)
+		mw := io.MultiWriter(writers...)
+
+		copyErr := make(chan error, 1)
+		copyN := make(chan int64, 1)
+		go func() {
+			n, err := io.Copy(mw, resp)
+			copyN <- n
+			copyErr <- err
+			_ = pw.Close()
+		}()
+
+		playErr := playToSpeakers(ctx, pr)
+		copyNVal := <-copyN
+		copyErrVal := <-copyErr
+		if copyErrVal != nil {
+			return copyNVal, copyErrVal
+		}
+		return copyNVal, playErr
+	}
+
+	if len(writers) == 0 {
+		return 0, errors.New("nothing to do: enable --play or provide --output")
+	}
+
+	mw := io.MultiWriter(writers...)
+	n, err := io.Copy(mw, resp)
+	return n, err
+}
+
+func convertAndPlayMiniMax(ctx context.Context, client *minimax.Client, opts speakOptions, payload minimax.TTSRequest) (int64, error) {
+	data, err := client.ConvertTTS(ctx, opts.voiceID, payload)
+	if err != nil {
+		return 0, err
+	}
+	n := int64(len(data))
+
+	if opts.outputPath != "" {
+		if err := os.MkdirAll(filepath.Dir(opts.outputPath), 0o755); err != nil {
+			return n, err
+		}
+		if err := os.WriteFile(opts.outputPath, data, 0o644); err != nil {
+			return n, err
+		}
+	}
+
+	if opts.play {
+		pr, pw := io.Pipe()
+		go func() {
+			_, _ = pw.Write(data)
+			_ = pw.Close()
+		}()
+		return n, playToSpeakers(ctx, pr)
+	}
+	if opts.outputPath == "" {
+		return n, errors.New("nothing to do: enable --play or provide --output")
+	}
+	return n, nil
+}
+
 func resolveVoice(ctx context.Context, client *elevenlabs.Client, voiceInput string, forceID bool) (string, error) {
 	voiceInput = strings.TrimSpace(voiceInput)
 	if voiceInput == "" {
@@ -515,6 +656,68 @@ func resolveVoice(ctx context.Context, client *elevenlabs.Client, voiceInput str
 	return "", fmt.Errorf("voice %q not found; try 'sag voices' or -v '?'", voiceInput)
 }
 
+func resolveMiniMaxVoice(ctx context.Context, client *minimax.Client, voiceInput string, forceID bool) (string, error) {
+	voiceInput = strings.TrimSpace(voiceInput)
+	if voiceInput == "" {
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		voices, err := client.ListVoices(ctx)
+		if err != nil {
+			return "", fmt.Errorf("voice not specified and failed to fetch voices: %w", err)
+		}
+		if len(voices) == 0 {
+			return "", errors.New("no voices available; specify --voice or set MINIMAX_VOICE_ID")
+		}
+		fmt.Fprintf(os.Stderr, "defaulting to voice %s (%s)\n", voices[0].Name, voices[0].VoiceID)
+		return voices[0].VoiceID, nil
+	}
+	if voiceInput == "?" {
+		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		voices, err := client.ListVoices(ctx)
+		if err != nil {
+			return "", err
+		}
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		if _, err := fmt.Fprintf(w, "VOICE ID\tNAME\tCATEGORY\n"); err != nil {
+			return "", err
+		}
+		for _, v := range voices {
+			if _, err := fmt.Fprintf(w, "%s\t%s\t%s\n", v.VoiceID, v.Name, v.Category); err != nil {
+				return "", err
+			}
+		}
+		if err := w.Flush(); err != nil {
+			return "", err
+		}
+		return "", nil
+	}
+	if forceID {
+		return voiceInput, nil
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	voices, err := client.ListVoices(ctx)
+	if err != nil {
+		return voiceInput, nil
+	}
+	voiceInputLower := strings.ToLower(voiceInput)
+	for _, v := range voices {
+		if strings.ToLower(v.VoiceID) == voiceInputLower || strings.ToLower(v.Name) == voiceInputLower {
+			fmt.Fprintf(os.Stderr, "using voice %s (%s)\n", v.Name, v.VoiceID)
+			return v.VoiceID, nil
+		}
+	}
+	for _, v := range voices {
+		if strings.Contains(strings.ToLower(v.Name), voiceInputLower) {
+			fmt.Fprintf(os.Stderr, "using voice %s (%s)\n", v.Name, v.VoiceID)
+			return v.VoiceID, nil
+		}
+	}
+	return voiceInput, nil
+}
+
 func looksLikeVoiceID(voiceInput string) bool {
 	return len(voiceInput) >= 15 && !strings.ContainsRune(voiceInput, ' ')
 }
@@ -537,5 +740,90 @@ func inferFormatFromExt(path string) string {
 		return "pcm_44100"
 	default:
 		return ""
+	}
+}
+
+func inferMiniMaxFormatFromExt(path string) string {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".mp3":
+		return "mp3"
+	case ".wav", ".wave":
+		return "wav"
+	case ".flac":
+		return "flac"
+	default:
+		return ""
+	}
+}
+
+func detectProvider(modelID string) string {
+	modelID = strings.ToLower(strings.TrimSpace(modelID))
+	if strings.HasPrefix(modelID, "speech-") {
+		return providerMiniMax
+	}
+	return providerElevenLabs
+}
+
+func minimaxBaseURL() string {
+	host := strings.TrimSpace(os.Getenv("MINIMAX_API_HOST"))
+	if host == "" {
+		host = strings.TrimSpace(os.Getenv("MINIMAX_BASE_URL"))
+	}
+	if host == "" {
+		return ""
+	}
+	if strings.HasPrefix(host, "http://") || strings.HasPrefix(host, "https://") {
+		return host
+	}
+	return "https://" + host
+}
+
+func buildMiniMaxTTSRequest(opts speakOptions, text string) (minimax.TTSRequest, error) {
+	format, err := normalizeMiniMaxFormat(opts.outputFmt)
+	if err != nil {
+		return minimax.TTSRequest{}, err
+	}
+	if opts.stream && format != "mp3" {
+		return minimax.TTSRequest{}, errors.New("MiniMax streaming supports mp3 only; use --no-stream for wav/flac")
+	}
+	if opts.play && format != "mp3" {
+		return minimax.TTSRequest{}, errors.New("MiniMax playback supports mp3 only; use --output without --play for wav/flac")
+	}
+
+	speed := opts.speed
+	return minimax.TTSRequest{
+		Model:       opts.modelID,
+		Text:        text,
+		Speed:       speed,
+		Volume:      1.0,
+		Pitch:       0,
+		AudioFormat: format,
+		SampleRate:  32000,
+		Bitrate:     128000,
+		Channel:     1,
+	}, nil
+}
+
+func normalizeMiniMaxFormat(format string) (string, error) {
+	format = strings.ToLower(strings.TrimSpace(format))
+	switch format {
+	case "", "mp3", "wav", "flac":
+		if format == "" {
+			return "mp3", nil
+		}
+		return format, nil
+	case "mp3_44100_128":
+		return "mp3", nil
+	case "pcm_44100":
+		return "wav", nil
+	default:
+		if strings.HasPrefix(format, "mp3_") {
+			return "mp3", nil
+		}
+		if strings.HasPrefix(format, "pcm_") {
+			return "wav", nil
+		}
+		return "", fmt.Errorf("format %q not supported for MiniMax (use mp3, wav, flac)", format)
 	}
 }
