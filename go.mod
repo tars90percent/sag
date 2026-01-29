@@ -3,7 +3,6 @@ module github.com/steipete/sag
 go 1.24.0
 
 require (
-	github.com/coder/websocket v1.8.14
 	github.com/ebitengine/oto/v3 v3.4.0
 	github.com/hajimehoshi/go-mp3 v0.3.4
 	github.com/spf13/cobra v1.10.2

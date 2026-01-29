@@ -39,6 +39,20 @@ type speakOptions struct {
 
 	speakerBoost   bool
 	noSpeakerBoost bool
+
+	minimaxVolume                  float64
+	minimaxPitch                   int
+	minimaxEmotion                 string
+	minimaxLanguage                string
+	minimaxAccent                  string
+	minimaxTone                    []string
+	minimaxTextNormalization       bool
+	minimaxLatexRead               bool
+	minimaxContinuousSound         bool
+	minimaxVoiceModifyPitch        int
+	minimaxVoiceModifyIntensity    int
+	minimaxVoiceModifyTimbre       int
+	minimaxVoiceModifySoundEffects string
 }
 
 const defaultWPM = 175 // matches macOS `say` default rate
@@ -146,7 +160,7 @@ func init() {
 			var bytes int64
 			switch provider {
 			case providerMiniMax:
-				payload, err := buildMiniMaxTTSRequest(opts, text)
+				payload, err := buildMiniMaxTTSRequest(cmd, opts, text)
 				if err != nil {
 					return err
 				}
@@ -211,6 +225,19 @@ func init() {
 	cmd.Flags().StringVar(&opts.lang, "lang", "", "Language code (2-letter ISO 639-1; influences normalization; when set)")
 	cmd.Flags().BoolVar(&opts.metrics, "metrics", false, "Print request metrics to stderr (chars, bytes, duration, etc.)")
 	cmd.Flags().StringVarP(&opts.inputFile, "input-file", "f", "", "Read text from file (use '-' for stdin), matching macOS say -f")
+	cmd.Flags().Float64Var(&opts.minimaxVolume, "volume", 0, "MiniMax voice volume (0..10; when set)")
+	cmd.Flags().IntVar(&opts.minimaxPitch, "pitch", 0, "MiniMax voice pitch (-12..12; when set)")
+	cmd.Flags().StringVar(&opts.minimaxEmotion, "emotion", "", "MiniMax voice emotion (model dependent)")
+	cmd.Flags().StringVar(&opts.minimaxLanguage, "language", "", "MiniMax language boost (e.g. English, Chinese,Yue; when set)")
+	cmd.Flags().StringVar(&opts.minimaxAccent, "accent", "", "Alias for --language (MiniMax language boost)")
+	cmd.Flags().StringArrayVar(&opts.minimaxTone, "tone", nil, "MiniMax pronunciation tone override (repeatable, e.g. \"omg/oh my god\")")
+	cmd.Flags().BoolVar(&opts.minimaxTextNormalization, "text-normalization", false, "MiniMax text normalization (improves digit reading; when set)")
+	cmd.Flags().BoolVar(&opts.minimaxLatexRead, "latex-read", false, "MiniMax LaTeX formula reading (Chinese only; when set)")
+	cmd.Flags().BoolVar(&opts.minimaxContinuousSound, "continuous-sound", false, "MiniMax continuous sound for smoother transitions (when set)")
+	cmd.Flags().IntVar(&opts.minimaxVoiceModifyPitch, "voice-modify-pitch", 0, "MiniMax voice modify pitch (-100..100; when set)")
+	cmd.Flags().IntVar(&opts.minimaxVoiceModifyIntensity, "voice-modify-intensity", 0, "MiniMax voice modify intensity (-100..100; when set)")
+	cmd.Flags().IntVar(&opts.minimaxVoiceModifyTimbre, "voice-modify-timbre", 0, "MiniMax voice modify timbre (-100..100; when set)")
+	cmd.Flags().StringVar(&opts.minimaxVoiceModifySoundEffects, "voice-modify-sound-effects", "", "MiniMax voice modify sound effects (e.g. spacious_echo, auditorium_echo, lofi_telephone, robotic)")
 	cmd.Flags().Bool("progress", false, "Accepted for macOS say compatibility (no-op)")
 	cmd.Flags().String("network-send", "", "Accepted for macOS say compatibility (not implemented)")
 	cmd.Flags().String("audio-device", "", "Accepted for macOS say compatibility (not implemented)")
@@ -591,11 +618,13 @@ func resolveVoice(ctx context.Context, client *elevenlabs.Client, voiceInput str
 			return "", err
 		}
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		if _, err := fmt.Fprintf(w, "VOICE ID\tNAME\tCATEGORY\n"); err != nil {
+		if _, err := fmt.Fprintf(w, "VOICE ID\tNAME\tCATEGORY\tDESCRIPTION\n"); err != nil {
 			return "", err
 		}
 		for _, v := range voices {
-			if _, err := fmt.Fprintf(w, "%s\t%s\t%s\n", v.VoiceID, v.Name, v.Category); err != nil {
+			desc := strings.ReplaceAll(v.Description, "\t", " ")
+			desc = strings.ReplaceAll(desc, "\n", " ")
+			if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", v.VoiceID, v.Name, v.Category, desc); err != nil {
 				return "", err
 			}
 		}
@@ -779,29 +808,161 @@ func minimaxBaseURL() string {
 	return "https://" + host
 }
 
-func buildMiniMaxTTSRequest(opts speakOptions, text string) (minimax.TTSRequest, error) {
+func buildMiniMaxTTSRequest(cmd *cobra.Command, opts speakOptions, text string) (minimax.TTSRequest, error) {
+	flags := cmd.Flags()
+
 	format, err := normalizeMiniMaxFormat(opts.outputFmt)
 	if err != nil {
 		return minimax.TTSRequest{}, err
 	}
-	if opts.stream && format != "mp3" {
-		return minimax.TTSRequest{}, errors.New("MiniMax streaming supports mp3 only; use --no-stream for wav/flac")
-	}
-	if opts.play && format != "mp3" {
-		return minimax.TTSRequest{}, errors.New("MiniMax playback supports mp3 only; use --output without --play for wav/flac")
+	formatExplicit := flags.Changed("format") || opts.outputPath != ""
+	if formatExplicit {
+		if opts.stream && format != "mp3" {
+			return minimax.TTSRequest{}, errors.New("MiniMax streaming supports mp3 only; use --no-stream for wav/flac")
+		}
+		if opts.play && format != "mp3" {
+			return minimax.TTSRequest{}, errors.New("MiniMax playback supports mp3 only; use --output without --play for wav/flac")
+		}
+	} else {
+		format = ""
 	}
 
-	speed := opts.speed
+	var speedPtr *float64
+	if flags.Changed("speed") || flags.Changed("rate") {
+		speed := opts.speed
+		speedPtr = &speed
+	}
+
+	var volumePtr *float64
+	if flags.Changed("volume") {
+		if opts.minimaxVolume <= 0 || opts.minimaxVolume > 10 {
+			return minimax.TTSRequest{}, errors.New("volume must be between 0 and 10 (exclusive 0)")
+		}
+		volume := opts.minimaxVolume
+		volumePtr = &volume
+	}
+
+	var pitchPtr *int
+	if flags.Changed("pitch") {
+		if opts.minimaxPitch < -12 || opts.minimaxPitch > 12 {
+			return minimax.TTSRequest{}, errors.New("pitch must be between -12 and 12")
+		}
+		pitch := opts.minimaxPitch
+		pitchPtr = &pitch
+	}
+
+	emotion := strings.TrimSpace(opts.minimaxEmotion)
+	if flags.Changed("emotion") && emotion == "" {
+		return minimax.TTSRequest{}, errors.New("emotion cannot be empty")
+	}
+
+	var textNormPtr *bool
+	if flags.Changed("text-normalization") {
+		v := opts.minimaxTextNormalization
+		textNormPtr = &v
+	}
+
+	var latexReadPtr *bool
+	if flags.Changed("latex-read") {
+		v := opts.minimaxLatexRead
+		latexReadPtr = &v
+	}
+
+	var continuousSoundPtr *bool
+	if flags.Changed("continuous-sound") {
+		v := opts.minimaxContinuousSound
+		continuousSoundPtr = &v
+	}
+
+	var languageBoost string
+	if flags.Changed("language") || flags.Changed("accent") {
+		lang := strings.TrimSpace(opts.minimaxLanguage)
+		accent := strings.TrimSpace(opts.minimaxAccent)
+		if lang != "" && accent != "" && lang != accent {
+			return minimax.TTSRequest{}, errors.New("choose only one of --language or --accent (or set the same value)")
+		}
+		if lang != "" {
+			languageBoost = lang
+		} else {
+			languageBoost = accent
+		}
+		if languageBoost == "" {
+			return minimax.TTSRequest{}, errors.New("language/accent cannot be empty")
+		}
+	}
+
+	var tone []string
+	if flags.Changed("tone") {
+		for _, entry := range opts.minimaxTone {
+			value := strings.TrimSpace(entry)
+			if value == "" {
+				return minimax.TTSRequest{}, errors.New("tone entries cannot be empty")
+			}
+			tone = append(tone, value)
+		}
+	}
+
+	var voiceModify *minimax.VoiceModify
+	var voiceModifyPitch *int
+	var voiceModifyIntensity *int
+	var voiceModifyTimbre *int
+	var voiceModifySoundEffects *string
+	if flags.Changed("voice-modify-pitch") {
+		if opts.minimaxVoiceModifyPitch < -100 || opts.minimaxVoiceModifyPitch > 100 {
+			return minimax.TTSRequest{}, errors.New("voice-modify-pitch must be between -100 and 100")
+		}
+		v := opts.minimaxVoiceModifyPitch
+		voiceModifyPitch = &v
+	}
+	if flags.Changed("voice-modify-intensity") {
+		if opts.minimaxVoiceModifyIntensity < -100 || opts.minimaxVoiceModifyIntensity > 100 {
+			return minimax.TTSRequest{}, errors.New("voice-modify-intensity must be between -100 and 100")
+		}
+		v := opts.minimaxVoiceModifyIntensity
+		voiceModifyIntensity = &v
+	}
+	if flags.Changed("voice-modify-timbre") {
+		if opts.minimaxVoiceModifyTimbre < -100 || opts.minimaxVoiceModifyTimbre > 100 {
+			return minimax.TTSRequest{}, errors.New("voice-modify-timbre must be between -100 and 100")
+		}
+		v := opts.minimaxVoiceModifyTimbre
+		voiceModifyTimbre = &v
+	}
+	if flags.Changed("voice-modify-sound-effects") {
+		value := strings.TrimSpace(opts.minimaxVoiceModifySoundEffects)
+		if value == "" {
+			return minimax.TTSRequest{}, errors.New("voice-modify-sound-effects cannot be empty")
+		}
+		voiceModifySoundEffects = &value
+	}
+	if voiceModifyPitch != nil || voiceModifyIntensity != nil || voiceModifyTimbre != nil || voiceModifySoundEffects != nil {
+		voiceModify = &minimax.VoiceModify{
+			Pitch:        voiceModifyPitch,
+			Intensity:    voiceModifyIntensity,
+			Timbre:       voiceModifyTimbre,
+			SoundEffects: voiceModifySoundEffects,
+		}
+	}
+
+	var pronunciationDict *minimax.PronunciationDict
+	if len(tone) > 0 {
+		pronunciationDict = &minimax.PronunciationDict{Tone: tone}
+	}
+
 	return minimax.TTSRequest{
-		Model:       opts.modelID,
-		Text:        text,
-		Speed:       speed,
-		Volume:      1.0,
-		Pitch:       0,
-		AudioFormat: format,
-		SampleRate:  32000,
-		Bitrate:     128000,
-		Channel:     1,
+		Model:             opts.modelID,
+		Text:              text,
+		Speed:             speedPtr,
+		Volume:            volumePtr,
+		Pitch:             pitchPtr,
+		Emotion:           emotion,
+		TextNormalization: textNormPtr,
+		LatexRead:         latexReadPtr,
+		AudioFormat:       format,
+		LanguageBoost:     languageBoost,
+		ContinuousSound:   continuousSoundPtr,
+		PronunciationDict: pronunciationDict,
+		VoiceModify:       voiceModify,
 	}, nil
 }
 
